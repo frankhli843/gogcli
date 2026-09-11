@@ -180,6 +180,7 @@ type CalendarUpdateCmd struct {
 	Summary               string   `name:"summary" help:"New summary/title (set empty to clear)"`
 	From                  string   `name:"from" help:"New start time (RFC3339; set empty to clear)"`
 	To                    string   `name:"to" help:"New end time (RFC3339; set empty to clear)"`
+	AllowTimeChange       bool     `name:"allow-time-change" help:"Acknowledge an intentional start/end time change; required with --from or --to"`
 	StartTimezone         string   `name:"start-timezone" aliases:"from-timezone" help:"IANA timezone metadata for --from (e.g., Europe/Rome)"`
 	EndTimezone           string   `name:"end-timezone" aliases:"to-timezone" help:"IANA timezone metadata for --to (e.g., America/New_York)"`
 	Description           string   `name:"description" help:"New description (set empty to clear)"`
@@ -278,6 +279,7 @@ func calendarUpdateInputFromCommand(c *CalendarUpdateCmd) calendarUpdateInput {
 		Summary:               c.Summary,
 		From:                  c.From,
 		To:                    c.To,
+		AllowTimeChange:       c.AllowTimeChange,
 		StartTimezone:         c.StartTimezone,
 		EndTimezone:           c.EndTimezone,
 		Description:           c.Description,

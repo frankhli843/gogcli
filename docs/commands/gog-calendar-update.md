@@ -22,6 +22,7 @@ gog calendar (cal) update (edit,set) <calendarId> <eventId> [flags]
 | `-a`<br>`--account`<br>`--acct` | `string` |  | Account email, alias, or auto for authenticated Google API commands |
 | `--add-attendee` | `string` |  | Comma-separated attendee emails to add (preserves existing attendees); modifiers: ;optional, ;resource, ;comment=TEXT |
 | `--all-day` | `bool` |  | All-day event (use date-only in --from/--to) |
+| `--allow-time-change` | `bool` |  | Acknowledge an intentional start/end time change; required with --from or --to |
 | `--attachment` | `[]string` |  | File attachment URL (can be repeated; replaces all; set empty to clear) |
 | `--attendees` | `string` |  | Comma-separated attendee emails (replaces all; set empty to clear); modifiers: ;optional, ;resource, ;comment=TEXT |
 | `--client` | `string` |  | OAuth client name (selects stored credentials + token bucket) |

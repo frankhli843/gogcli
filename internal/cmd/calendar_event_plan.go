@@ -132,6 +132,7 @@ type calendarUpdateInput struct {
 	Summary               string
 	From                  string
 	To                    string
+	AllowTimeChange       bool
 	StartTimezone         string
 	EndTimezone           string
 	Description           string
@@ -224,6 +225,9 @@ func buildCalendarUpdatePlan(store *config.ConfigStore, input calendarUpdateInpu
 	}
 	if fields.AllDay && (!fields.From || !fields.To) {
 		return nil, usage("when changing --all-day, also provide --from and --to")
+	}
+	if (fields.From || fields.To) && !input.AllowTimeChange {
+		return nil, usage("changing an event start or end time requires --allow-time-change")
 	}
 	if fields.Attendees && fields.AddAttendee {
 		return nil, usage("cannot use both --attendees and --add-attendee; use --attendees to replace all, or --add-attendee to add")
