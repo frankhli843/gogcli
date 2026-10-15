@@ -61,7 +61,7 @@ gog calendar (cal) update (edit,set) <calendarId> <eventId> [flags]
 | `--readonly` | `bool` | false | Block mutating API requests at runtime; auth add also requests read-only OAuth scopes |
 | `--regenerate-meet` | `bool` |  | Replace the event's Google Meet video conference |
 | `--regenerate-zoom` | `bool` |  | Replace the event's Zoom video conference |
-| `--reminder` | `[]string` |  | Custom reminders as method:duration (e.g., popup:30m, email:1d). Can be repeated (max 5). Set empty to clear. |
+| `--reminder` | `[]string` |  | Custom reminders as method:duration (e.g., popup:30m, email:1d), or none to disable all reminders. Can be repeated (max 5). Set empty to use calendar defaults. |
 | `--remove-zoom` | `bool` |  | Remove the event's Zoom video conference |
 | `--results-only` | `bool` |  | In JSON mode, emit only the primary result (drops envelope fields like nextPageToken) |
 | `--rrule` | `[]string` |  | Recurrence rules (e.g., 'RRULE:FREQ=MONTHLY;BYMONTHDAY=11'). Can be repeated. Set empty to clear. |

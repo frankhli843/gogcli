@@ -1118,6 +1118,47 @@ func TestCalendarCreateCmd_ReminderPopupZeroForceSendsMinutes(t *testing.T) {
 	}
 }
 
+func TestCalendarCreateCmd_DisablesReminders(t *testing.T) {
+	var gotEvent map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/calendar/v3")
+		switch {
+		case r.Method == http.MethodGet && path == "/users/me/calendarList":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []map[string]any{{"id": "cal", "summary": "cal", "timeZone": "UTC"}},
+			})
+		case r.Method == http.MethodPost && path == "/calendars/cal/events":
+			if err := json.NewDecoder(r.Body).Decode(&gotEvent); err != nil {
+				t.Fatalf("decode event: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"id": "ev", "summary": "No Reminders"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	svc := newCalendarServiceFromServer(t, srv)
+	ctx := withCalendarTestService(newCmdRuntimeJSONOutputContext(t, io.Discard, io.Discard), svc)
+	cmd := &CalendarCreateCmd{}
+	if err := runKong(t, cmd, []string{
+		"cal", "--summary", "No Reminders",
+		"--from", "2025-01-01T10:00:00Z", "--to", "2025-01-01T11:00:00Z",
+		"--reminder", "none",
+	}, ctx, &RootFlags{Account: "a@b.com"}); err != nil {
+		t.Fatalf("runKong: %v", err)
+	}
+	reminders, ok := gotEvent["reminders"].(map[string]any)
+	if !ok || reminders["useDefault"] != false {
+		t.Fatalf("expected explicit useDefault=false, got %#v", gotEvent["reminders"])
+	}
+	if _, hasOverrides := reminders["overrides"]; hasOverrides {
+		t.Fatalf("expected no reminder overrides, got %#v", reminders)
+	}
+}
+
 func TestCalendarUpdateCmd_AddAttendeeNoOp(t *testing.T) {
 	var patchCalled bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
