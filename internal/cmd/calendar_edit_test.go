@@ -80,6 +80,22 @@ func TestCalendarUpdatePatchClearsReminders(t *testing.T) {
 	}
 }
 
+func TestCalendarUpdatePatchDisablesReminders(t *testing.T) {
+	cmd := &CalendarUpdateCmd{}
+	kctx := parseKongContext(t, cmd, []string{"cal1", "evt1", "--reminder", "none"})
+
+	patch, _, err := buildCalendarUpdatePatch(calendarUpdateInputFromCommand(cmd), calendarUpdateFieldsFromKong(kctx))
+	if err != nil {
+		t.Fatalf("buildUpdatePatch: %v", err)
+	}
+	if patch.Reminders == nil || patch.Reminders.UseDefault || len(patch.Reminders.Overrides) != 0 {
+		t.Fatalf("expected reminders disabled, got %#v", patch.Reminders)
+	}
+	if !hasForceSendField(patch.Reminders.ForceSendFields, "UseDefault") {
+		t.Fatalf("expected UseDefault=false to be force-sent")
+	}
+}
+
 func TestCalendarUpdatePatchExplicitTimezones(t *testing.T) {
 	cmd := &CalendarUpdateCmd{}
 	kctx := parseKongContext(t, cmd, []string{

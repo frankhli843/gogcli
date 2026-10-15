@@ -234,6 +234,17 @@ func buildReminders(reminders []string) (*calendar.EventReminders, error) {
 	if len(filtered) == 0 {
 		return nil, nil
 	}
+	if len(filtered) == 1 && strings.EqualFold(filtered[0], "none") {
+		return &calendar.EventReminders{
+			UseDefault:      false,
+			ForceSendFields: []string{"UseDefault"},
+		}, nil
+	}
+	for _, reminder := range filtered {
+		if strings.EqualFold(reminder, "none") {
+			return nil, usagef("reminder none cannot be combined with custom reminders")
+		}
+	}
 
 	if len(filtered) > 5 {
 		return nil, usagef("maximum 5 reminders allowed (got %d)", len(filtered))

@@ -339,6 +339,15 @@ func TestBuildReminders(t *testing.T) {
 		t.Fatalf("expected (nil, nil), got (%#v, %v)", got, err)
 	}
 
+	got, err = buildReminders([]string{"none"})
+	if err != nil || got == nil || got.UseDefault || len(got.Overrides) != 0 || !hasStringValue(got.ForceSendFields, "UseDefault") {
+		t.Fatalf("expected explicit disabled reminders, got (%#v, %v)", got, err)
+	}
+	_, err = buildReminders([]string{"none", "popup:30m"})
+	if err == nil || ExitCode(err) != 2 {
+		t.Fatalf("expected usage error for none combined with custom reminder, got %v", err)
+	}
+
 	got, err = buildReminders([]string{"popup:30m", "email:1d"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
