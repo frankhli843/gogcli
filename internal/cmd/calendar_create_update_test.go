@@ -422,6 +422,92 @@ func TestCalendarUpdateCmd_RunJSON(t *testing.T) {
 	}
 }
 
+func TestCalendarUpdateCmd_RefusesTimeChangeWithoutExplicitOverride(t *testing.T) {
+	var patchSeen bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/calendar/v3")
+		if r.Method == http.MethodPatch && path == "/calendars/cal@example.com/events/source-appt" {
+			patchSeen = true
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "source-appt",
+				"start": map[string]any{
+					"dateTime": "2026-09-11T16:30:00-04:00",
+				},
+				"end": map[string]any{
+					"dateTime": "2026-09-11T17:00:00-04:00",
+				},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := newCalendarServiceFromServer(t, srv)
+	ctx := withCalendarTestService(newCmdRuntimeJSONOutputContext(t, io.Discard, io.Discard), svc)
+
+	cmd := &CalendarUpdateCmd{}
+	err := runKong(t, cmd, []string{
+		"cal@example.com",
+		"source-appt",
+		"--from", "2026-09-11T16:30:00-04:00",
+		"--to", "2026-09-11T17:00:00-04:00",
+		"--start-timezone", "America/Toronto",
+		"--end-timezone", "America/Toronto",
+		"--send-updates", "none",
+	}, ctx, &RootFlags{Account: "a@b.com"})
+	if err == nil || !strings.Contains(err.Error(), "--allow-time-change") {
+		t.Fatalf("expected --allow-time-change refusal, got err=%v", err)
+	}
+	if patchSeen {
+		t.Fatalf("unsafe time update reached PATCH")
+	}
+}
+
+func TestCalendarUpdateCmd_AllowsTimeChangeWithExplicitOverride(t *testing.T) {
+	var got calendar.Event
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/calendar/v3")
+		if r.Method == http.MethodPatch && path == "/calendars/cal@example.com/events/source-appt" {
+			if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+				t.Fatalf("decode patch: %v", err)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "source-appt",
+			})
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	svc := newCalendarServiceFromServer(t, srv)
+	ctx := withCalendarTestService(newCmdRuntimeJSONOutputContext(t, io.Discard, io.Discard), svc)
+
+	cmd := &CalendarUpdateCmd{}
+	err := runKong(t, cmd, []string{
+		"cal@example.com",
+		"source-appt",
+		"--from", "2026-09-11T16:30:00-04:00",
+		"--to", "2026-09-11T17:00:00-04:00",
+		"--allow-time-change",
+		"--start-timezone", "America/Toronto",
+		"--end-timezone", "America/Toronto",
+		"--send-updates", "none",
+	}, ctx, &RootFlags{Account: "a@b.com"})
+	if err != nil {
+		t.Fatalf("runKong: %v", err)
+	}
+	if got.Start == nil || got.End == nil {
+		t.Fatalf("expected start/end patch, got %#v", got)
+	}
+	if got.Start.DateTime != "2026-09-11T16:30:00-04:00" || got.End.DateTime != "2026-09-11T17:00:00-04:00" {
+		t.Fatalf("unexpected time patch: start=%#v end=%#v", got.Start, got.End)
+	}
+}
+
 func TestCalendarUpdateCmd_AttachmentsReplaceAndClear(t *testing.T) {
 	var patchCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

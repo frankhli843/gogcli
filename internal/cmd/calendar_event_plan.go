@@ -85,6 +85,7 @@ type calendarCreatePlan struct {
 }
 
 type calendarUpdateFields struct {
+	ZoomSettings          bool
 	Summary               bool
 	Description           bool
 	Location              bool
@@ -132,6 +133,7 @@ type calendarUpdateInput struct {
 	Summary               string
 	From                  string
 	To                    string
+	AllowTimeChange       bool
 	StartTimezone         string
 	EndTimezone           string
 	Description           string
@@ -205,7 +207,7 @@ func (f calendarUpdateFields) workingLocationEventType() bool {
 }
 
 func (f calendarUpdateFields) zoomMutation() bool {
-	return f.WithZoom || f.RegenerateZoom || f.RemoveZoom
+	return f.WithZoom || f.RegenerateZoom || f.RemoveZoom || f.ZoomSettings
 }
 
 func buildCalendarUpdatePlan(store *config.ConfigStore, input calendarUpdateInput, fields calendarUpdateFields) (*calendarUpdatePlan, error) {
@@ -224,6 +226,9 @@ func buildCalendarUpdatePlan(store *config.ConfigStore, input calendarUpdateInpu
 	}
 	if fields.AllDay && (!fields.From || !fields.To) {
 		return nil, usage("when changing --all-day, also provide --from and --to")
+	}
+	if (fields.From || fields.To) && !input.AllowTimeChange {
+		return nil, usage("changing an event start or end time requires --allow-time-change")
 	}
 	if fields.Attendees && fields.AddAttendee {
 		return nil, usage("cannot use both --attendees and --add-attendee; use --attendees to replace all, or --add-attendee to add")

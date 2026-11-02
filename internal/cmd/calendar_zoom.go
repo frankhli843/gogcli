@@ -35,7 +35,9 @@ func createZoomMeetingForEvent(ctx context.Context, event *calendar.Event) (*zoo
 	if err != nil {
 		return nil, err
 	}
-	return client.CreateMeeting(ctx, "me", zoomMeetingRequestFromEvent(event))
+	req := zoomMeetingRequestFromEvent(event)
+	req.Settings = explicitZoomSettings(ctx)
+	return client.CreateMeeting(ctx, "me", req)
 }
 
 func zoomMeetingRequestFromEvent(event *calendar.Event) zoom.CreateMeetingRequest {

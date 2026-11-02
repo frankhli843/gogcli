@@ -332,7 +332,7 @@ func applyUpdateConferenceData(fields calendarUpdateFields, patch *calendar.Even
 		patch.NullFields = append(patch.NullFields, "ConferenceData")
 		return true
 	}
-	if fields.WithZoom || fields.RegenerateZoom {
+	if fields.WithZoom || fields.RegenerateZoom || fields.ZoomSettings {
 		return true
 	}
 	if !fields.WithMeet && !fields.RegenerateMeet {
