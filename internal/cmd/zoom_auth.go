@@ -16,7 +16,8 @@ import (
 )
 
 type ZoomCmd struct {
-	Auth ZoomAuthCmd `cmd:"" name:"auth" help:"Manage Zoom Server-to-Server OAuth credentials"`
+	Meeting ZoomMeetingCmd `cmd:"" name:"meeting" help:"Create, inspect, update or delete Zoom meetings"`
+	Auth    ZoomAuthCmd    `cmd:"" name:"auth" help:"Manage Zoom Server-to-Server OAuth credentials"`
 }
 
 type ZoomAuthCmd struct {

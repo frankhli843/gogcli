@@ -42,6 +42,7 @@ type CalendarCreateCmd struct {
 	GuestsCanSeeOthers    *bool    `name:"guests-can-see-others" help:"Allow guests to see other guests"`
 	WithMeet              bool     `name:"with-meet" help:"Create a Google Meet video conference for this event"`
 	WithZoom              bool     `name:"with-zoom" help:"Create a Zoom video conference for this event"`
+	ZoomSettings          string   `name:"zoom-settings" help:"Explicit Zoom settings JSON: auto_recording and both AI Companion auto-start booleans; requires --with-zoom"`
 	IncludePasswords      bool     `name:"include-passwords" help:"Do not redact Zoom meeting passwords in output" env:"GOG_ZOOM_INCLUDE_PASSWORDS"`
 	SourceUrl             string   `name:"source-url" help:"URL where event was created/imported from"`
 	SourceTitle           string   `name:"source-title" help:"Title of the source"`
@@ -124,7 +125,18 @@ func calendarCreateInputFromCommand(c *CalendarCreateCmd) calendarCreateInput {
 
 func (c *CalendarCreateCmd) Run(ctx context.Context, flags *RootFlags, kctx *kong.Context) error {
 	ctx = withZoomIncludePasswords(ctx, c.IncludePasswords)
+	settings, settingsErr := parseZoomMeetingSettings(c.ZoomSettings)
+	if settingsErr != nil {
+		return settingsErr
+	}
+	ctx = withExplicitZoomSettings(ctx, settings)
+	if flagProvided(kctx, "zoom-settings") && settings == nil {
+		return usage("--zoom-settings must not be empty")
+	}
 	fields := calendarCreateFieldsFromKong(kctx)
+	if settings != nil && !c.WithZoom {
+		return usage("--zoom-settings requires --with-zoom")
+	}
 	store, err := commandConfigStore(ctx)
 	if err != nil {
 		return err
@@ -133,7 +145,7 @@ func (c *CalendarCreateCmd) Run(ctx context.Context, flags *RootFlags, kctx *kon
 	if err != nil {
 		return err
 	}
-	if dryRunErr := dryRunExit(ctx, flags, "calendar.create", plan.dryRunRequest()); dryRunErr != nil {
+	if dryRunErr := dryRunExit(ctx, flags, "calendar.create", zoomSettingsDryRun(plan.dryRunRequest(), settings)); dryRunErr != nil {
 		return dryRunErr
 	}
 	if plan.PlaceLookup != nil {
@@ -204,6 +216,7 @@ type CalendarUpdateCmd struct {
 	WithMeet              bool     `name:"with-meet" help:"Create a Google Meet video conference for this event"`
 	RegenerateMeet        bool     `name:"regenerate-meet" help:"Replace the event's Google Meet video conference"`
 	WithZoom              bool     `name:"with-zoom" help:"Create a Zoom video conference for this event"`
+	ZoomSettings          string   `name:"zoom-settings" help:"Explicit Zoom settings JSON: auto_recording and both AI Companion auto-start booleans; applies to an existing Zoom meeting on update"`
 	RegenerateZoom        bool     `name:"regenerate-zoom" help:"Replace the event's Zoom video conference"`
 	RemoveZoom            bool     `name:"remove-zoom" help:"Remove the event's Zoom video conference"`
 	IncludePasswords      bool     `name:"include-passwords" help:"Do not redact Zoom meeting passwords in output" env:"GOG_ZOOM_INCLUDE_PASSWORDS"`
@@ -255,6 +268,7 @@ func calendarUpdateFieldsFromKong(kctx *kong.Context) calendarUpdateFields {
 		RegenerateMeet:        flagProvided(kctx, "regenerate-meet"),
 		WithZoom:              flagProvided(kctx, "with-zoom"),
 		RegenerateZoom:        flagProvided(kctx, "regenerate-zoom"),
+		ZoomSettings:          flagProvided(kctx, "zoom-settings"),
 		RemoveZoom:            flagProvided(kctx, "remove-zoom"),
 		PrivateProps:          flagProvided(kctx, "private-prop"),
 		SharedProps:           flagProvided(kctx, "shared-prop"),
@@ -323,7 +337,18 @@ func calendarUpdateInputFromCommand(c *CalendarUpdateCmd) calendarUpdateInput {
 
 func (c *CalendarUpdateCmd) Run(ctx context.Context, kctx *kong.Context, flags *RootFlags) error {
 	ctx = withZoomIncludePasswords(ctx, c.IncludePasswords)
+	settings, settingsErr := parseZoomMeetingSettings(c.ZoomSettings)
+	if settingsErr != nil {
+		return settingsErr
+	}
+	ctx = withExplicitZoomSettings(ctx, settings)
+	if flagProvided(kctx, "zoom-settings") && settings == nil {
+		return usage("--zoom-settings must not be empty")
+	}
 	fields := calendarUpdateFieldsFromKong(kctx)
+	if settings != nil && (c.RemoveZoom || c.WithMeet || c.RegenerateMeet) {
+		return usage("--zoom-settings cannot be combined with removing Zoom or selecting Meet")
+	}
 	store, err := commandConfigStore(ctx)
 	if err != nil {
 		return err
@@ -332,7 +357,7 @@ func (c *CalendarUpdateCmd) Run(ctx context.Context, kctx *kong.Context, flags *
 	if err != nil {
 		return err
 	}
-	if dryRunErr := dryRunExit(ctx, flags, "calendar.update", plan.dryRunRequest()); dryRunErr != nil {
+	if dryRunErr := dryRunExit(ctx, flags, "calendar.update", zoomSettingsDryRun(plan.dryRunRequest(), settings)); dryRunErr != nil {
 		return dryRunErr
 	}
 	if plan.PlaceLookup != nil {
@@ -470,11 +495,36 @@ func (c *CalendarUpdateCmd) prepareZoomConferencePatch(
 		return patch, changed, fmt.Errorf("failed to fetch current event for conference data: %w", err)
 	}
 
+	if fields.ZoomSettings && !fields.WithZoom && !fields.RegenerateZoom {
+		meetingID, ok := extractZoomMeetingID(existing)
+		if !ok {
+			return patch, changed, usage("cannot apply Zoom settings: event has no parseable Zoom meeting ID")
+		}
+		if err := updateZoomMeetingSettings(ctx, meetingID, explicitZoomSettings(ctx)); err != nil {
+			return patch, changed, err
+		}
+		if patchEffectivelyEmpty(patch) {
+			if err := mutation.writeEvent(ctx, existing); err != nil {
+				return patch, false, err
+			}
+			return patch, false, errZoomConferenceAlreadyHandled
+		}
+		return patch, changed, nil
+	}
 	switch {
 	case fields.WithZoom:
 		provider := eventConferenceProvider(existing)
 		switch provider {
 		case conferenceProviderZoom:
+			if settings := explicitZoomSettings(ctx); settings != nil {
+				meetingID, ok := extractZoomMeetingID(existing)
+				if !ok {
+					return patch, changed, usage("cannot apply Zoom settings: event has no parseable Zoom meeting ID")
+				}
+				if err := updateZoomMeetingSettings(ctx, meetingID, settings); err != nil {
+					return patch, changed, err
+				}
+			}
 			if patchOnlyConferenceData(patch) || patchEffectivelyEmpty(patch) {
 				if err := mutation.writeEvent(ctx, existing); err != nil {
 					return patch, false, err

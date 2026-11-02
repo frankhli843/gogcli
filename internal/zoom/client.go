@@ -27,6 +27,7 @@ var (
 	ErrZoomRequestFailed         = errors.New("zoom request failed")
 	ErrZoomTokenRequestFailed    = errors.New("zoom token request failed")
 	ErrZoomTokenMissingAccessKey = errors.New("zoom token response missing access_token")
+	errMeetingSettingsRequired   = errors.New("explicit Zoom meeting settings required")
 	errZoomTokenStoreNil         = errors.New("zoom token store is nil")
 )
 
@@ -86,33 +87,44 @@ func NewClient(alias string, credentials Credentials, tokens TokenStore, opts ..
 	return c, nil
 }
 
+// MeetingSettings is explicit per-meeting policy. Boolean fields deliberately do
+// not use omitempty: false must override account defaults.
+type MeetingSettings struct {
+	AutoRecording                 string `json:"auto_recording"`
+	AutoStartMeetingSummary       bool   `json:"auto_start_meeting_summary"`
+	AutoStartAICompanionQuestions bool   `json:"auto_start_ai_companion_questions"`
+}
+
 type Meeting struct {
-	ID        int64  `json:"id,omitempty"`
-	UUID      string `json:"uuid,omitempty"`
-	Topic     string `json:"topic,omitempty"`
-	JoinURL   string `json:"join_url,omitempty"`
-	Password  string `json:"password,omitempty"`
-	StartURL  string `json:"start_url,omitempty"`
-	HostEmail string `json:"host_email,omitempty"`
-	IconURI   string `json:"icon_uri,omitempty"`
+	Settings  *MeetingSettings `json:"settings,omitempty"`
+	ID        int64            `json:"id,omitempty"`
+	UUID      string           `json:"uuid,omitempty"`
+	Topic     string           `json:"topic,omitempty"`
+	JoinURL   string           `json:"join_url,omitempty"`
+	Password  string           `json:"password,omitempty"`
+	StartURL  string           `json:"start_url,omitempty"`
+	HostEmail string           `json:"host_email,omitempty"`
+	IconURI   string           `json:"icon_uri,omitempty"`
 }
 
 type CreateMeetingRequest struct {
-	Topic     string    `json:"topic,omitempty"`
-	Type      int       `json:"type,omitempty"`
-	StartTime time.Time `json:"-"`
-	Duration  int       `json:"duration,omitempty"`
-	Timezone  string    `json:"timezone,omitempty"`
-	Agenda    string    `json:"agenda,omitempty"`
+	Settings  *MeetingSettings `json:"settings,omitempty"`
+	Topic     string           `json:"topic,omitempty"`
+	Type      int              `json:"type,omitempty"`
+	StartTime time.Time        `json:"-"`
+	Duration  int              `json:"duration,omitempty"`
+	Timezone  string           `json:"timezone,omitempty"`
+	Agenda    string           `json:"agenda,omitempty"`
 }
 
 type createMeetingJSON struct {
-	Topic     string `json:"topic,omitempty"`
-	Type      int    `json:"type,omitempty"`
-	StartTime string `json:"start_time,omitempty"`
-	Duration  int    `json:"duration,omitempty"`
-	Timezone  string `json:"timezone,omitempty"`
-	Agenda    string `json:"agenda,omitempty"`
+	Settings  *MeetingSettings `json:"settings,omitempty"`
+	Topic     string           `json:"topic,omitempty"`
+	Type      int              `json:"type,omitempty"`
+	StartTime string           `json:"start_time,omitempty"`
+	Duration  int              `json:"duration,omitempty"`
+	Timezone  string           `json:"timezone,omitempty"`
+	Agenda    string           `json:"agenda,omitempty"`
 }
 
 func (c *Client) CreateMeeting(ctx context.Context, userID string, req CreateMeetingRequest) (*Meeting, error) {
@@ -124,6 +136,7 @@ func (c *Client) CreateMeeting(ctx context.Context, userID string, req CreateMee
 		req.Type = 2
 	}
 	payload := createMeetingJSON{
+		Settings: req.Settings,
 		Topic:    strings.TrimSpace(req.Topic),
 		Type:     req.Type,
 		Duration: req.Duration,
@@ -138,6 +151,31 @@ func (c *Client) CreateMeeting(ctx context.Context, userID string, req CreateMee
 		return nil, err
 	}
 	return &meeting, nil
+}
+
+func (c *Client) GetMeeting(ctx context.Context, meetingID string) (*Meeting, error) {
+	meetingID = strings.TrimSpace(meetingID)
+	if meetingID == "" {
+		return nil, ErrMeetingNotFound
+	}
+	var meeting Meeting
+	if err := c.doJSON(ctx, http.MethodGet, defaultAPIBaseURL+"/meetings/"+url.PathEscape(meetingID), nil, &meeting); err != nil {
+		return nil, err
+	}
+	return &meeting, nil
+}
+
+func (c *Client) UpdateMeetingSettings(ctx context.Context, meetingID string, settings *MeetingSettings) error {
+	meetingID = strings.TrimSpace(meetingID)
+	if meetingID == "" {
+		return ErrMeetingNotFound
+	}
+	if settings == nil {
+		return errMeetingSettingsRequired
+	}
+	return c.doJSON(ctx, http.MethodPatch, defaultAPIBaseURL+"/meetings/"+url.PathEscape(meetingID), struct {
+		Settings *MeetingSettings `json:"settings"`
+	}{settings}, nil)
 }
 
 func (c *Client) DeleteMeeting(ctx context.Context, meetingID string) error {

@@ -85,6 +85,7 @@ type calendarCreatePlan struct {
 }
 
 type calendarUpdateFields struct {
+	ZoomSettings          bool
 	Summary               bool
 	Description           bool
 	Location              bool
@@ -206,7 +207,7 @@ func (f calendarUpdateFields) workingLocationEventType() bool {
 }
 
 func (f calendarUpdateFields) zoomMutation() bool {
-	return f.WithZoom || f.RegenerateZoom || f.RemoveZoom
+	return f.WithZoom || f.RegenerateZoom || f.RemoveZoom || f.ZoomSettings
 }
 
 func buildCalendarUpdatePlan(store *config.ConfigStore, input calendarUpdateInput, fields calendarUpdateFields) (*calendarUpdatePlan, error) {
